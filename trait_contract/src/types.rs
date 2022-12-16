@@ -10,6 +10,7 @@ pub enum Error {
     TraitExists = 2,
     TraitNotFound = 3,
     TraitNotReady = 4,
+    OptionDistributionFailed = 5,
 }
 
 #[contracttype]
@@ -79,5 +80,31 @@ impl AssetTrait {
             return false;
         }
         true
+    }
+
+    pub fn distribute_options(self: Self, total_options: u32, env: Env, rand: fn(env: &Env, u32, u32) -> u32) -> Option<AssetTrait> {
+        let mut unassigned_items = self.options.len();
+        let mut assigned_options = 0;
+        let mut res = self.clone();
+
+        while unassigned_items > 0 {
+            unassigned_items -= 1;
+
+            let mut o = self.options.get(unassigned_items).unwrap().unwrap();
+
+            if unassigned_items > 0 {
+                o.available = rand(&env, 1, total_options - assigned_options - unassigned_items);
+            } else {
+                o.available = total_options - assigned_options;
+            }
+            assigned_options += o.available;
+
+            res.options.set(unassigned_items, o);
+        }
+
+        if assigned_options == total_options {
+            return Some(res);
+        }
+        None
     }
 }

@@ -8,10 +8,10 @@ use soroban_rand::SorobanRng;
 mod types;
 mod tests;
 
-
-const TRAITS: Symbol = symbol!("traits");
+pub const TRAITS: Symbol = symbol!("traits");
 const COLLECTION: Symbol = symbol!("collection");
 const FINAL: Symbol = symbol!("final");
+const EMPTY: Symbol = symbol!("");
 
 pub struct TraitContract;
 
@@ -38,9 +38,7 @@ impl TraitContract {
     }
 
     pub fn add_option(env: Env, to_trait: Symbol, name: Symbol, value: TraitOptionValue) -> AssetTrait {
-        if name == symbol!("") {
-            panic!("Must provide a option name")
-        }
+        assert!(name != EMPTY, "Must provide a option name");
         let e_trait = Self::get_trait(env.clone(), to_trait);
         if let Some(mut found) = e_trait {
             found.options.push_back(TraitOptionItem::new(name, Some(value)));
@@ -55,21 +53,34 @@ impl TraitContract {
         if let None = env.storage().get(COLLECTION) as Option<Result<TraitCollection, _>> {
             panic_with_error!(&env, Error::NotInitialized);
         }
-        let collection: TraitCollection = env.storage().get(COLLECTION).unwrap().unwrap_or_default();
-        let traits = Self::get_traits(env.clone());
+        let collection_size = env.storage()
+            .get_unchecked::<_, TraitCollection>(COLLECTION)
+            .unwrap_or_default()
+            .size;
+        let traits = Self::get_traits(env.clone()).clone().iter();
         // all traits must have at least one option but not more options than collection size
-        if traits.iter().map(|r|r.unwrap_or_default()).any(|t| !t.check_is_ready(collection.size)) {
+        if traits.map(|r|r.unwrap_or_default()).any(|t| !t.check_is_ready(collection_size)) {
             panic_with_error!(&env, Error::TraitNotReady);
         }
+
+        let mut updated_traits: Vec<AssetTrait> = vec![&env];
+        for t in Self::get_traits(env.clone()).clone() {
+            //let ut = t.unwrap();
+            if let Some(ut) = t.unwrap().distribute_options(collection_size, env.clone(), Self::get_random_number) {
+              updated_traits.push_back(ut.clone());
+            } else {
+                panic_with_error!(&env, Error::OptionDistributionFailed);
+            }
+
+        }
+        env.storage().set(TRAITS, updated_traits);
 
         env.storage().set(FINAL, true);
         env.storage().get(FINAL).unwrap_or_else(|| Ok(false)).unwrap_or_default()
     }
 
     fn get_trait(env: Env, name: Symbol) -> Option<AssetTrait> {
-        if name == symbol!("") {
-            panic!("Must provide a trait name")
-        }
+        assert!(name != EMPTY, "Must provide a trait name");
         let mut traits = Self::get_traits(env.clone())
             .into_iter()
             .map(|r|r.unwrap_or_default());
@@ -88,27 +99,26 @@ impl TraitContract {
     }
 
     fn update_trait(env: Env, updated: &AssetTrait) -> bool {
-        let traits = Self::get_traits(env.clone());
+        let mut was_updated = false;
         let mut i = 0;
-        let mut update_traits = traits.clone();
-        for _t in traits.iter() {
+        let mut update_traits = Self::get_traits(env.clone());
+        for _t in update_traits.iter() {
             let t = _t.unwrap().clone();
             if t.name == updated.name {
                 update_traits.remove(i);
                 update_traits.push_back(updated.clone());
                 env.storage().set(TRAITS, update_traits);
+                was_updated = true;
                 break;
             }
 
             i += 1;
         }
-    true
+        was_updated
     }
 
-    #[allow(dead_code)]
     fn get_random_number(e: &Env, min: u32, max: u32) -> u32 {
         let mut rng = SorobanRng::init(e.clone());
-        rng.gen_range(min..max)
+        rng.gen_range(min..=max)
     }
 }
-

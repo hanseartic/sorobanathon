@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{TraitCollection, TraitContract, TraitContractClient, AssetTrait, TraitOptionItem, TraitOptionValue};
+    use crate::{TraitCollection, TraitContract, TraitContractClient, AssetTrait, TraitOptionItem, TraitOptionValue, TRAITS};
     use soroban_sdk::{bytes, symbol, vec, Env, Vec};
 
     fn get_client() -> TraitContractClient {
@@ -56,7 +56,7 @@ mod tests {
     }
 
     #[test]
-    fn add_option() {
+    fn add_options() {
         let client = get_client();
         let env = &client.env;
 
@@ -64,10 +64,12 @@ mod tests {
         // "a trait with options".hex => 612074726169742077697468206f7074696f6e73
         _ = client.add_trait(&symbol!("has_opts"), &bytes!(env, 0x612074726169742077697468206f7074696f6e73));
 
-        let res = client.add_option(&symbol!("has_opts"), &symbol!("option_1"), &TraitOptionValue::Numeric(1));
+        _ = client.add_option(&symbol!("has_opts"), &symbol!("option_1"), &TraitOptionValue::Numeric(1));
+        _ = client.add_option(&symbol!("has_opts"), &symbol!("option_2"), &TraitOptionValue::Numeric(5));
+        let res = client.add_option(&symbol!("has_opts"), &symbol!("option_3"), &TraitOptionValue::Numeric(10));
 
         let updated_trait = env
-            .as_contract(&client.contract_id, || env.storage().get::<_, Vec<AssetTrait>>(symbol!("traits")))
+            .as_contract(&client.contract_id, || env.storage().get::<_, Vec<AssetTrait>>(TRAITS))
             .expect("contract must have traits")
             .unwrap()
             .get(0)
@@ -78,6 +80,17 @@ mod tests {
             updated_trait.options,
             res.options
         );
+        assert!(client.finalize());
+
+        let finalized_trait = env
+        .as_contract(&client.contract_id, || env.storage().get::<_, Vec<AssetTrait>>(TRAITS))
+        .expect("contract must have traits")
+        .unwrap()
+        .get(0)
+        .expect("must be some")
+        .expect("must be a trait");
+
+        assert!(finalized_trait.options.get_unchecked(0).unwrap().available > 0);
     }
 
 
