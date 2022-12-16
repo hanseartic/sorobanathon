@@ -11,6 +11,7 @@ pub enum Error {
     TraitNotFound = 3,
     TraitNotReady = 4,
     OptionDistributionFailed = 5,
+    OptionAlreadyExistsOnTrait = 6,
 }
 
 #[contracttype]

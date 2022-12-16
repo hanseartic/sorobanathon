@@ -10,7 +10,7 @@ mod tests;
 
 pub const TRAITS: Symbol = symbol!("traits");
 const COLLECTION: Symbol = symbol!("collection");
-const FINAL: Symbol = symbol!("final");
+const IS_FINAL: Symbol = symbol!("final");
 const EMPTY: Symbol = symbol!("");
 
 pub struct TraitContract;
@@ -37,12 +37,14 @@ impl TraitContract {
         traits
     }
 
-    pub fn add_option(env: Env, to_trait: Symbol, name: Symbol, value: TraitOptionValue) -> AssetTrait {
-        assert!(name != EMPTY, "Must provide a option name");
-        let e_trait = Self::get_trait(env.clone(), to_trait);
-        if let Some(mut found) = e_trait {
-            found.options.push_back(TraitOptionItem::new(name, Some(value)));
-            Self::update_trait(env.clone(), &found);
+    pub fn add_option(env: Env, to_trait: Symbol, option_name: Symbol, option_value: TraitOptionValue) -> AssetTrait {
+        assert!(option_name != EMPTY, "Must provide an option name");
+        if let Some(mut found) = Self::get_trait(env.clone(), to_trait) {
+            if Self::trait_has_option(found.clone(), option_name) {
+                panic_with_error!(&env, Error::OptionAlreadyExistsOnTrait);
+            }
+            found.options.push_back(TraitOptionItem::new(option_name, Some(option_value)));
+            Self::update_trait(env.clone(), found.clone());
             found
         } else {
             panic_with_error!(&env, Error::TraitNotFound);
@@ -63,20 +65,18 @@ impl TraitContract {
             panic_with_error!(&env, Error::TraitNotReady);
         }
 
-        let mut updated_traits: Vec<AssetTrait> = vec![&env];
-        for t in Self::get_traits(env.clone()).clone() {
-            //let ut = t.unwrap();
-            if let Some(ut) = t.unwrap().distribute_options(collection_size, env.clone(), Self::get_random_number) {
-              updated_traits.push_back(ut.clone());
+        let mut asset_traits = Self::get_traits(env.clone());
+        for i in 0..asset_traits.len() {
+            if let Some(ut) = asset_traits.get_unchecked(i).unwrap().distribute_options(collection_size, env.clone(), Self::get_random_number) {
+                asset_traits.set(i, ut);
             } else {
                 panic_with_error!(&env, Error::OptionDistributionFailed);
             }
-
         }
-        env.storage().set(TRAITS, updated_traits);
+        env.storage().set(TRAITS, asset_traits);
 
-        env.storage().set(FINAL, true);
-        env.storage().get(FINAL).unwrap_or_else(|| Ok(false)).unwrap_or_default()
+        env.storage().set(IS_FINAL, true);
+        env.storage().get(IS_FINAL).unwrap_or_else(|| Ok(false)).unwrap_or_default()
     }
 
     fn get_trait(env: Env, name: Symbol) -> Option<AssetTrait> {
@@ -98,23 +98,28 @@ impl TraitContract {
             .unwrap()
     }
 
-    fn update_trait(env: Env, updated: &AssetTrait) -> bool {
+    fn update_trait(env: Env, updated: AssetTrait) -> bool {
         let mut was_updated = false;
-        let mut i = 0;
         let mut update_traits = Self::get_traits(env.clone());
-        for _t in update_traits.iter() {
-            let t = _t.unwrap().clone();
+
+        for i in 0..update_traits.len() {
+            let t = update_traits.get_unchecked(i).unwrap();
             if t.name == updated.name {
-                update_traits.remove(i);
-                update_traits.push_back(updated.clone());
+                update_traits.set(i, updated);
                 env.storage().set(TRAITS, update_traits);
                 was_updated = true;
                 break;
             }
-
-            i += 1;
         }
         was_updated
+    }
+
+    fn trait_has_option(t: AssetTrait, option_name: Symbol) -> bool {
+        let mut has_option = false;
+        if let Some(option_exists) = t.options.iter().find(|o|o.is_ok() && o.as_ref().unwrap().name == option_name) {
+            has_option = option_exists.is_ok();
+        }
+        has_option
     }
 
     fn get_random_number(e: &Env, min: u32, max: u32) -> u32 {

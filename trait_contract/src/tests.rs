@@ -90,9 +90,10 @@ mod tests {
         .expect("must be some")
         .expect("must be a trait");
 
-        assert!(finalized_trait.options.get_unchecked(0).unwrap().available > 0);
+        for o in finalized_trait.options {
+            assert!(o.unwrap().available > 0);
+        }
     }
-
 
     #[test]
     #[should_panic(expected= "Status(ContractError(3)")] // Error::TraitNotFound
@@ -109,5 +110,19 @@ mod tests {
             res.options,
             vec![&env, option]
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "Status(ContractError(6))")] // Error::OptionAlreadyExistsOnTrait
+    fn duplicate_option_name() {
+        let client = get_client();
+        let env = &client.env;
+
+        client.init(&bytes!(&env, 0xff), &10);
+        // "a trait with options".hex => 612074726169742077697468206f7074696f6e73
+        _ = client.add_trait(&symbol!("has_opts"), &bytes!(env, 0x612074726169742077697468206f7074696f6e73));
+
+        _ = client.add_option(&symbol!("has_opts"), &symbol!("option_1"), &TraitOptionValue::Numeric(1));
+        _ = client.add_option(&symbol!("has_opts"), &symbol!("option_1"), &TraitOptionValue::Characters(bytes!(env, 0x00)));
     }
 }
