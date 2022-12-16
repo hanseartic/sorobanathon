@@ -16,6 +16,8 @@
 **/pkg/
 **/wasm-pack.log
 
+**/.env
+
 # IDEs
 .idea
 .vscode
