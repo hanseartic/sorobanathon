@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contractimpl, panic_with_error, symbol, vec, Bytes, Env, Symbol, Vec};
+use soroban_sdk::{contractimpl, map, panic_with_error, symbol, vec, Bytes, BytesN, Env, Map, Symbol, Vec};
 use types::*;
 use rand::Rng;
 use soroban_rand::SorobanRng;
@@ -9,9 +9,15 @@ mod types;
 mod tests;
 
 pub const TRAITS: Symbol = symbol!("traits");
+pub const ASSIGNED: Symbol = symbol!("assigned");
 const COLLECTION: Symbol = symbol!("collection");
 const IS_FINAL: Symbol = symbol!("final");
 const EMPTY: Symbol = symbol!("");
+
+pub fn get_random_number(e: &Env, min: u32, max: u32) -> u32 {
+    let mut rng = SorobanRng::init(e.clone());
+    rng.gen_range(min..=max)
+}
 
 pub struct TraitContract;
 
@@ -28,6 +34,7 @@ impl TraitContract {
     }
 
     pub fn add_trait(env: Env, name: Symbol, desc: Bytes) -> Vec<AssetTrait> {
+        Self::expect_initialized(env.clone());
         let mut traits: Vec<AssetTrait> = Self::get_traits(env.clone());
         if traits.iter().any(|r| r.unwrap_or_default().name == name) {
             panic_with_error!(&env, Error::TraitExists)
@@ -38,6 +45,7 @@ impl TraitContract {
     }
 
     pub fn add_option(env: Env, to_trait: Symbol, option_name: Symbol, option_value: TraitOptionValue) -> AssetTrait {
+        Self::expect_initialized(env.clone());
         assert!(option_name != EMPTY, "Must provide an option name");
         if let Some(mut found) = Self::get_trait(env.clone(), to_trait) {
             if Self::trait_has_option(found.clone(), option_name) {
@@ -52,9 +60,7 @@ impl TraitContract {
     }
 
     pub fn finalize(env: Env) -> bool {
-        if let None = env.storage().get(COLLECTION) as Option<Result<TraitCollection, _>> {
-            panic_with_error!(&env, Error::NotInitialized);
-        }
+        Self::expect_initialized(env.clone());
         let collection_size = env.storage()
             .get_unchecked::<_, TraitCollection>(COLLECTION)
             .unwrap_or_default()
@@ -67,7 +73,7 @@ impl TraitContract {
 
         let mut asset_traits = Self::get_traits(env.clone());
         for i in 0..asset_traits.len() {
-            if let Some(ut) = asset_traits.get_unchecked(i).unwrap().distribute_options(collection_size, env.clone(), Self::get_random_number) {
+            if let Some(ut) = asset_traits.get_unchecked(i).unwrap().distribute_options(collection_size, env.clone()) {
                 asset_traits.set(i, ut);
             } else {
                 panic_with_error!(&env, Error::OptionDistributionFailed);
@@ -75,8 +81,58 @@ impl TraitContract {
         }
         env.storage().set(TRAITS, asset_traits);
 
+        env.storage().set(ASSIGNED, map!(&env) as Map<BytesN<32>, Map<Symbol, TraitOptionValue>>);
+
         env.storage().set(IS_FINAL, true);
         env.storage().get(IS_FINAL).unwrap_or_else(|| Ok(false)).unwrap_or_default()
+    }
+
+    pub fn draw(env: Env, id: BytesN<32>) -> Result<Map<Symbol, TraitOptionValue>, Error> {
+        Self::expect_finalized(env.clone());
+
+        let mut assigned_traits = env.storage()
+            .get_unchecked::<_, Map<BytesN<32>, Map<Symbol, TraitOptionValue>>>(ASSIGNED).unwrap();
+
+        if assigned_traits.len() == env.storage().get_unchecked::<_, TraitCollection>(COLLECTION)
+            .unwrap().size {
+                panic_with_error!(&env, Error::NoTraitsLeft)
+        }
+
+        let mut selected_options = assigned_traits.get(id.clone())
+            .unwrap_or_else(||Ok(map![&env])).unwrap();
+
+        if selected_options.len() > 0 {
+            return Ok(selected_options);
+        }
+
+        let asset_traits = Self::get_traits(env.clone());
+        for i in 0..asset_traits.len() {
+            if let Some(Ok(current_trait)) = asset_traits.get(i) {
+                let option_indexes = current_trait.clone().get_available_options(env.clone());
+                let selected_index = option_indexes.get_unchecked(get_random_number(&env, 0, option_indexes.len()-1)).unwrap();
+                if let Some(Ok(option)) = current_trait.options.get(selected_index) {
+                    selected_options.set(current_trait.name, option.value);
+                }
+            }
+        }
+        assigned_traits.set(id, selected_options.clone());
+        env.storage().set(ASSIGNED, assigned_traits);
+
+        // todo: figure a way to identify trait-set
+        // for now just use input
+        Ok(selected_options)
+    }
+
+    fn expect_initialized(env: Env) {
+        if !env.storage().has(COLLECTION) {
+            panic_with_error!(&env, Error::NotInitialized)
+        }
+    }
+
+    fn expect_finalized(env: Env) {
+        if !env.storage().get::<_, bool>(IS_FINAL).unwrap_or_else(||Ok(false)).unwrap_or_else(|_|false) {
+            panic_with_error!(&env, Error::NotFinalized)
+        }
     }
 
     fn get_trait(env: Env, name: Symbol) -> Option<AssetTrait> {
@@ -90,6 +146,7 @@ impl TraitContract {
             None
         }
     }
+
 
     fn get_traits(env: Env) -> Vec<AssetTrait> {
         env.storage()
@@ -120,10 +177,5 @@ impl TraitContract {
             has_option = option_exists.is_ok();
         }
         has_option
-    }
-
-    fn get_random_number(e: &Env, min: u32, max: u32) -> u32 {
-        let mut rng = SorobanRng::init(e.clone());
-        rng.gen_range(min..=max)
     }
 }

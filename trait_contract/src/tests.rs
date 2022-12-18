@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::{TraitCollection, TraitContract, TraitContractClient, AssetTrait, TraitOptionItem, TraitOptionValue, TRAITS};
-    use soroban_sdk::{bytes, symbol, vec, Env, Vec};
+    use crate::{TraitCollection, TraitContract, TraitContractClient, AssetTrait, TraitOptionItem, TraitOptionValue};
+    use crate::{ASSIGNED, TRAITS};
+    use soroban_sdk::{bytes, symbol, testutils, vec, BytesN, Env, Map, Symbol, Vec};
 
     fn get_client() -> TraitContractClient {
         let env = Env::default();
@@ -48,6 +49,7 @@ mod tests {
             options: vec![env], //, TraitOptionItem{name: symbol!("option1"), value: TOV::Numeric(100), available: 1}],
         };
 
+        client.init(&bytes!(&env, 0xff), &1);
         let traits = client.add_trait(&new_trait.name, &new_trait.desc);
         assert_eq!(
             traits,
@@ -62,10 +64,10 @@ mod tests {
 
         client.init(&bytes!(&env, 0xff), &10);
         // "a trait with options".hex => 612074726169742077697468206f7074696f6e73
-        _ = client.add_trait(&symbol!("has_opts"), &bytes!(env, 0x612074726169742077697468206f7074696f6e73));
+        client.add_trait(&symbol!("has_opts"), &bytes!(env, 0x612074726169742077697468206f7074696f6e73));
 
-        _ = client.add_option(&symbol!("has_opts"), &symbol!("option_1"), &TraitOptionValue::Numeric(1));
-        _ = client.add_option(&symbol!("has_opts"), &symbol!("option_2"), &TraitOptionValue::Numeric(5));
+        client.add_option(&symbol!("has_opts"), &symbol!("option_1"), &TraitOptionValue::Numeric(1));
+        client.add_option(&symbol!("has_opts"), &symbol!("option_2"), &TraitOptionValue::Numeric(5));
         let res = client.add_option(&symbol!("has_opts"), &symbol!("option_3"), &TraitOptionValue::Numeric(10));
 
         let updated_trait = env
@@ -102,9 +104,10 @@ mod tests {
         let env = &client.env;
 
         let option = TraitOptionItem{
-            name: symbol!("option_1"), value: TraitOptionValue::Numeric(1), available: 0
+            name: symbol!("option_1"), value: TraitOptionValue::Numeric(1), available: 0, total: 0,
         };
 
+        client.init(&bytes!(&env, 0xff), &1);
         let res = client.add_option(&symbol!("has_opts"), &symbol!("option_1"), &TraitOptionValue::Numeric(1));
         assert_eq!(
             res.options,
@@ -120,9 +123,79 @@ mod tests {
 
         client.init(&bytes!(&env, 0xff), &10);
         // "a trait with options".hex => 612074726169742077697468206f7074696f6e73
-        _ = client.add_trait(&symbol!("has_opts"), &bytes!(env, 0x612074726169742077697468206f7074696f6e73));
+        client.add_trait(&symbol!("has_opts"), &bytes!(env, 0x612074726169742077697468206f7074696f6e73));
 
-        _ = client.add_option(&symbol!("has_opts"), &symbol!("option_1"), &TraitOptionValue::Numeric(1));
-        _ = client.add_option(&symbol!("has_opts"), &symbol!("option_1"), &TraitOptionValue::Characters(bytes!(env, 0x00)));
+        client.add_option(&symbol!("has_opts"), &symbol!("option_1"), &TraitOptionValue::Numeric(1));
+        client.add_option(&symbol!("has_opts"), &symbol!("option_1"), &TraitOptionValue::Characters(bytes!(env, 0x00)));
+    }
+
+    #[test]
+    fn draw() {
+        let client = get_client();
+        let env = &client.env;
+
+        client.init(&bytes!(&env, 0xff), &10);
+        // "a trait with options".hex => 612074726169742077697468206f7074696f6e73
+        client.add_trait(&symbol!("trait_1"), &bytes!(env, 0x612074726169742077697468206f7074696f6e73));
+        client.add_option(&symbol!("trait_1"), &symbol!("option_1"), &TraitOptionValue::Numeric(1));
+        client.add_option(&symbol!("trait_1"), &symbol!("option_2"), &TraitOptionValue::Numeric(2));
+        client.add_option(&symbol!("trait_1"), &symbol!("option_3"), &TraitOptionValue::Numeric(5));
+
+        client.add_trait(&symbol!("trait_2"), &bytes!(env, 0x612074726169742077697468206f7074696f6e73));
+        // "green".hex => 677265656e
+        client.add_option(&symbol!("trait_2"), &symbol!("option_1"), &&TraitOptionValue::Characters(bytes!(&env, 0x677265656e)));
+        // "red".hex => 726564
+        client.add_option(&symbol!("trait_2"), &symbol!("option_2"), &&TraitOptionValue::Characters(bytes!(&env, 0x726564)));
+
+        client.finalize();
+
+        for _ in 0..10 {
+            let random_bytes = <BytesN<32> as testutils::BytesN<32>>::random(&env) as BytesN<32>;
+            _ = client.draw(&random_bytes)
+        }
+    }
+
+    #[test]
+    #[should_panic( expected = "Status(ContractError(8))" )]
+    fn draw_over_limit() {
+        let client = get_client();
+        let env = &client.env;
+
+        client.init(&bytes!(&env, 0xff), &1);
+        // "a trait with options".hex => 612074726169742077697468206f7074696f6e73
+        client.add_trait(&symbol!("trait_1"), &bytes!(env, 0x612074726169742077697468206f7074696f6e73));
+        client.add_option(&symbol!("trait_1"), &symbol!("option_1"), &TraitOptionValue::Numeric(1));
+
+        client.finalize();
+
+        for _ in 0..=1 {
+            let random_bytes = <BytesN<32> as testutils::BytesN<32>>::random(&env) as BytesN<32>;
+            _ = client.draw(&random_bytes)
+        }
+    }
+
+    #[test]
+    fn draw_for_same_id() {
+        let client = get_client();
+        let env = &client.env;
+
+        client.init(&bytes!(&env, 0xff), &2);
+        // "a trait with options".hex => 612074726169742077697468206f7074696f6e73
+        client.add_trait(&symbol!("trait_1"), &bytes!(env, 0x612074726169742077697468206f7074696f6e73));
+        client.add_option(&symbol!("trait_1"), &symbol!("option_1"), &TraitOptionValue::Numeric(1));
+        client.add_option(&symbol!("trait_1"), &symbol!("option_2"), &TraitOptionValue::Numeric(1));
+
+        client.finalize();
+        let draw_id = <BytesN<32> as testutils::BytesN<32>>::random(&env) as BytesN<32>;
+        for _ in 0..5 {
+            _ = client.draw(&draw_id)
+        }
+
+        let assigned_traits = env
+            .as_contract(&client.contract_id, || env.storage().get_unchecked::<_, Map<BytesN<32>, Map<Symbol, TraitOptionValue>>>(ASSIGNED))
+            .unwrap();
+
+        assert_eq!(assigned_traits.len(), 1);
+        assert!(assigned_traits.contains_key(draw_id));
     }
 }
