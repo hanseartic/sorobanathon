@@ -13,7 +13,7 @@ If you want to cut right to the chase here's all you need to do. Let's build a c
 *The following assumes you have the CLI and rust-pipeline all [set up](https://soroban.stellar.org/docs/getting-started/setup).*
 
 
-#### Clone this repo:
+#### Clone this repo
 ```shell
 git clone https://github.com/hanseartic/sorobanathon.git hanseartic_sorobanathon
 cd hanseartic_sorobanathon
@@ -25,7 +25,7 @@ cargo build --target wasm32-unknown-unknown --release
 CID=$(soroban deploy --wasm target/wasm32-unknown-unknown/release/trait_contract.wasm)
 ```
 
-#### Now let's initialize the contract for a collection of 15
+#### Now let's initialize the contract for a collection of 15 *rustlings*
 ```shell
 soroban invoke --id $CID --fn init --arg 527573746c696e6773 --arg 15
 ```
@@ -195,9 +195,7 @@ soroban invoke --id $CID --fn draw \
 </details>
 You should get back a response like
 
-```shell
-{"age":["Numeric",98],"eyes":["Characters",[121,101,108,108,111,119]],"hair":["Characters",[98,114,111,119,110]]}
-```
+`{"age":["Numeric",98],"eyes":["Characters",[121,101,108,108,111,119]],"hair":["Characters",[98,114,111,119,110]]}`
 which (in this case) translates to
 
 ```json
@@ -208,7 +206,9 @@ which (in this case) translates to
 }
 ```
 
-Invoking the contract one more time with a new ID errors out (as expected):
+🎉 Congratulations! We have built a collection of traits and successfully drawn random combinations from it!!!
+
+⚠️ Invoking the contract one more time with a new ID errors out (as expected):
 ```
 error: HostError
 Value: Status(ContractError(8))
@@ -219,21 +219,21 @@ Debug events (newest first):
    2: "failing with contract error status code 'Status(ContractError(8))'"
 ```
 
-## The implementation
+## 👨‍💻 The implementation
 This implementation follows a naive builder-approch as to split up invoking the individual parts of the contract. Also as the actual distribution of the options is randomized and not defined by the input this seemed to be a good approach.
 
 Discussions in dev-discord showed that this *may* not desired and it could/should be improved to a init-once invoke of the contract.
 
 The contract will be initialized with a name and a collection-size. The name is not used right now but may be later to allow the same contract to be allowed to manage multiple collections (as of now for each collection a new deployment of the contract needs to be done), a set of traits (e.g. color, strength, accessoire), each trait with a set of options.
 
-### Constraints
+### 🚧 Constraints
 * There must be **at least one trait** in a *collection*.
 * Each trait must have **at least one** *option*.
 * The amount of options per trait can **not** exceed the *collection size*.
 
 These constraints ensure that each option will be assigned to a trait-set when all combinations have been drawn.
 
-### Future Improvements
+### 🏗️ Future Improvements
 * The contract should be intialized in a single step instead of with a builder-pattern
 * The contract should be able to manage multiple sets of collections - currently a new deployment is needed for a new collection
 * The contract *could* implement the [token interface](https://soroban.stellar.org/docs/common-interfaces/token)
