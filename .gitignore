@@ -16,6 +16,11 @@
 **/pkg/
 **/wasm-pack.log
 
+**/.env
+
+**/node_modules
+**/package-lock.json
+
 # IDEs
 .idea
 .vscode

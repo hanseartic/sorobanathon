@@ -1,0 +1,22 @@
+[package]
+name = "trait_contract"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib"]
+doctest = false
+
+[features]
+testutils = ["soroban-sdk/testutils"]
+
+[dependencies]
+soroban-sdk = "0.3.2"
+soroban-rand = { git = "https://github.com/vinamogit/soroban-rand" }
+rand = { version = "0.8.5", default-features = false }
+
+[dev_dependencies]
+soroban-sdk = { version = "0.3.2", features = ["testutils"] }
