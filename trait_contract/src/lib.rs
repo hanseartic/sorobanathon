@@ -24,6 +24,13 @@ pub struct TraitContract;
 #[contractimpl]
 impl TraitContract {
 
+    /// Initializes the contract with a name and desired collection size.
+    ///
+    /// The name is not evaluated at the moment. Could be used to allow the contract to
+    /// manage multiple collections.
+    /// The size determines how many trait-sets can be drawn from the contract.
+    ///
+    /// Returns the created [`TraitCollection`] as confirmation.
     pub fn init(env: Env, name: Bytes, size: u32) -> Result<TraitCollection, Error>{
         if env.storage().has(COLLECTION) {
             panic_with_error!(&env, Error::AlreadyInitialized)
@@ -33,6 +40,15 @@ impl TraitContract {
         Ok(collection)
     }
 
+    /// Add a trait to the collection.
+    ///
+    /// Traits are the holdings options for a certain property to be assigned.
+    /// For these properties could be numeric values (e.g. strength, age, ...) represented as [`u32`] or
+    /// any property of the image (e.g. 'background color', 'accessoire', ...) represented as [`Bytes`].
+    ///
+    /// Returns all traits that have been added to the contract.
+    ///
+    /// Returns a [`Vec`] of all currently existing [`AssetTrait`] of the contract.
     pub fn add_trait(env: Env, name: Symbol, desc: Bytes) -> Vec<AssetTrait> {
         Self::expect_initialized(env.clone());
         let mut traits: Vec<AssetTrait> = Self::get_traits(env.clone());
@@ -44,6 +60,13 @@ impl TraitContract {
         traits
     }
 
+    /// Add an option to a trait.
+    ///
+    /// Add a [`TraitOptionItem`] to an [`AssetTrait`] identified by name.
+    ///
+    /// Returns the trait with all currently added options.
+    ///
+    /// Return [`AssetTrait`]
     pub fn add_option(env: Env, to_trait: Symbol, option_name: Symbol, option_value: TraitOptionValue) -> AssetTrait {
         Self::expect_initialized(env.clone());
         assert!(option_name != EMPTY, "Must provide an option name");
@@ -59,6 +82,41 @@ impl TraitContract {
         }
     }
 
+    /// Finalize the contract
+    ///
+    /// Finalizing a contract will prevent adding more traits or options. Furthermore it will distribute the options
+    /// over the size of the collection.
+    ///
+    /// Given a [`TraitCollection`].size of 10 and a [`AssetTrait`] with three [`TraitOptionItem`],
+    /// the options for the trait will be randomly distributed over the collection.
+    ///
+    /// E.g. defining a 'background-color' trait with three options (red, green, blue) could end up distributed like this:
+    /// ```
+    /// AssetTrait {
+    ///   name: "background",
+    ///   desc: 0x4261636b67726f756e6420636f6c6f72, // <= "Backgroun color"
+    ///   options: [
+    ///     TraitOptionItem {
+    ///       name: "red",
+    ///       value: TraitOptionValue::Charatcer("red"),
+    ///       available: 3,
+    ///       initial: 3,
+    ///     },
+    ///     TraitOptionItem {
+    ///       name: "green",
+    ///       value: TraitOptionValue::Charatcer("green"),
+    ///       available: 2,
+    ///       initial: 2,
+    ///     },
+    ///     TraitOptionItem {
+    ///       name: "blue",
+    ///       value: TraitOptionValue::Charatcer("blue"),
+    ///       available: 5,
+    ///       initial: 5,
+    ///     }
+    ///   ],
+    /// }
+    /// ```
     pub fn finalize(env: Env) -> bool {
         Self::expect_initialized(env.clone());
         let collection_size = env.storage()
@@ -87,6 +145,15 @@ impl TraitContract {
         env.storage().get(IS_FINAL).unwrap_or_else(|| Ok(false)).unwrap_or_default()
     }
 
+    /// Draw an option (trait-set) from the pool.
+    ///
+    /// Provide an identifier to draw the trait-set for (could be sha256 of an asset descriptor
+    /// e.g. "RUSTLING:GARCMLC7PX4H47NWANR3TBY52OJCBWZ6N54IIIIT32GX3OD7J5OXU6HQ" => 0d6d7e76e304748ee0310f6a1fa95eda9d49d9dcf2a6b1d64582413b9702f891)
+    ///
+    /// Notes:
+    /// - subsequent invokes with the same id will return the already assigned option => there is only one option per ID
+    /// - after <collection size>-amount of results have been drawn the collection is exhausted and subsequent invokes (except for
+    ///    already known IDs, see above) will fail.
     pub fn draw(env: Env, id: BytesN<32>) -> Result<Map<Symbol, TraitOptionValue>, Error> {
         Self::expect_finalized(env.clone());
 
@@ -146,7 +213,6 @@ impl TraitContract {
             None
         }
     }
-
 
     fn get_traits(env: Env) -> Vec<AssetTrait> {
         env.storage()
